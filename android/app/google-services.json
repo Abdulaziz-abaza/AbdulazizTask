@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "996700908733",
+    "project_id": "chatmodule-ac96c",
+    "storage_bucket": "chatmodule-ac96c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:996700908733:android:e2a466cf5c437353179bd4",
+        "android_client_info": {
+          "package_name": "com.example.taskify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAn9c2cd3Co1EJ85lF0u6p10H_-yXvgGzM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
