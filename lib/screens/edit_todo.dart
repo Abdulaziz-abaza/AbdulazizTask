@@ -1,232 +1,211 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:mydo/core/constants/constants.dart';
+import 'package:mydo/core/notificationService.dart';
+import 'package:mydo/cubit/edit_todo_cubit.dart';
+import 'package:mydo/cubit/edit_todo_state.dart';
 
-class EditTodo extends StatefulWidget {
+class EditTodoScreen extends StatelessWidget {
   final String docId;
   final String uid;
   final bool isGroupTask;
 
-  EditTodo({required this.docId, required this.uid, required this.isGroupTask});
-
-  @override
-  _EditTodoState createState() => _EditTodoState();
-}
-
-class _EditTodoState extends State<EditTodo> {
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController descriptionController = TextEditingController();
-
-  DateTime? selectedStartTime;
-  DateTime? selectedEndTime;
-  String? selectedStatus;
-  List<String> statuses = ['Pending', 'In Progress', 'Completed'];
-
-  @override
-  void initState() {
-    super.initState();
-    fetchTodoData();
-  }
-
-  void fetchTodoData() async {
-    final snapshot;
-    if (widget.isGroupTask) {
-      snapshot = await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc("publicTasks")
-          .collection('allTasks')
-          .doc(widget.docId)
+  const EditTodoScreen({
+    Key? key,
+    required this.docId,
+    required this.uid,
+    required this.isGroupTask,
+  }) : super(key: key);
+  Future<String> getUserName(String userId) async {
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
           .get();
-    } else {
-      snapshot = await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(widget.uid)
-          .collection('mytasks')
-          .doc(widget.docId)
-          .get();
-    }
 
-    if (snapshot.exists) {
-      final data = snapshot.data() as Map<String, dynamic>;
-      titleController.text = data['title'];
-      descriptionController.text = data['description'];
-      selectedStatus = data['status'] ?? 'Pending';
-
-      selectedStartTime = DateTime.tryParse(data['start_time'] ?? '');
-      selectedEndTime = DateTime.tryParse(data['end_time'] ?? '');
-
-      setState(() {});
+      if (userDoc.exists && userDoc.data() != null) {
+        return userDoc['username'];
+      } else {
+        return 'Unknown User';
+      }
+    } catch (e) {
+      print('❌ Error fetching user name: $e');
+      return 'Unknown User';
     }
   }
 
-  Future<void> _selectTime({required bool isStartTime}) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
+  void updateTaskAndNotify(String createdByUserId) async {
+    String userName = await getUserName(createdByUserId);
 
-    if (picked != null) {
-      setState(() {
-        DateTime now = DateTime.now();
-        DateTime selectedTime =
-            DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
-        if (isStartTime) {
-          selectedStartTime = selectedTime;
-        } else {
-          selectedEndTime = selectedTime;
-        }
-      });
-    }
-  }
-
-  void updateTodo() async {
-    print("widget.uidwidget.uid ${widget.docId}");
-    print("widget.uidwidget.uid ${widget.uid}");
-
-    if (titleController.text.isEmpty) {
-      Fluttertoast.showToast(msg: 'Please enter a title');
-      return;
-    }
-    if (descriptionController.text.isEmpty) {
-      Fluttertoast.showToast(msg: 'Please enter a description');
-      return;
-    }
-    if (selectedStartTime == null) {
-      Fluttertoast.showToast(msg: 'Please select a start time');
-      return;
-    }
-    if (selectedEndTime == null) {
-      Fluttertoast.showToast(msg: 'Please select an end time');
-      return;
-    }
-    if (selectedEndTime!.isBefore(selectedStartTime!)) {
-      Fluttertoast.showToast(msg: 'End time must be after start time');
-      return;
-    }
-
-    if (widget.isGroupTask) {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc("publicTasks")
-          .collection('allTasks')
-          .doc(widget.docId)
-          .update({
-        'title': titleController.text,
-        'description': descriptionController.text,
-        'status': selectedStatus,
-        'start_time': selectedStartTime!.toIso8601String(),
-        'end_time': selectedEndTime!.toIso8601String(),
-      });
-    } else {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(widget.uid)
-          .collection('mytasks')
-          .doc(widget.docId)
-          .update({
-        'title': titleController.text,
-        'description': descriptionController.text,
-        'status': selectedStatus,
-        'start_time': selectedStartTime!.toIso8601String(),
-        'end_time': selectedEndTime!.toIso8601String(),
-      });
-    }
-
-    Fluttertoast.showToast(msg: 'Todo updated successfully');
-    Navigator.pop(context);
+    NotificationService.sendNotificationToAll(
+        "تم تحديث المهمة", "قام $userName بتحديث المهمة");
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Edit Task')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: 'Edit Title',
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
+    return BlocProvider(
+      create: (_) => EditTodoCubit()
+        ..fetchTodoData(docId: docId, uid: uid, isGroupTask: isGroupTask),
+      child: BlocConsumer<EditTodoCubit, EditTodoState>(
+        listener: (context, state) {
+          if (state is EditTodoError) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(state.message)));
+          } else if (state is EditTodoSuccess) {
+            Fluttertoast.showToast(msg: "Task updated successfully");
+
+            updateTaskAndNotify(uid);
+            // Navigate back to the previous screen after updating
+
+            Navigator.pop(context);
+          }
+        },
+        builder: (context, state) {
+          final cubit = context.read<EditTodoCubit>();
+
+          if (state is EditTodoLoading) {
+            return Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+
+          return Scaffold(
+            appBar: AppBar(
+              title: Text('Edit Task'),
+              backgroundColor: AppColors.primary,
             ),
-            SizedBox(height: 10),
-            TextField(
-              controller: descriptionController,
-              decoration: InputDecoration(
-                labelText: 'Edit Description',
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: selectedStatus,
-              decoration: InputDecoration(
-                labelText: 'Status',
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              items: statuses.map((status) {
-                return DropdownMenuItem<String>(
-                  value: status,
-                  child: Text(status),
-                );
-              }).toList(),
-              onChanged: (newValue) {
-                setState(() {
-                  selectedStatus = newValue;
-                });
-              },
-            ),
-            SizedBox(height: 10),
-            Row(
-              children: [
-                Text(selectedStartTime != null
-                    ? 'Start Time: ${selectedStartTime!.hour}:${selectedStartTime!.minute}'
-                    : 'Select Start Time'),
-                SizedBox(width: 20),
-                ElevatedButton(
-                  onPressed: () => _selectTime(isStartTime: true),
-                  child: Text('Pick Start Time'),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Text(selectedEndTime != null
-                    ? 'End Time: ${selectedEndTime!.hour}:${selectedEndTime!.minute}'
-                    : 'Select End Time'),
-                SizedBox(width: 20),
-                ElevatedButton(
-                  onPressed: () => _selectTime(isStartTime: false),
-                  child: Text('Pick End Time'),
-                ),
-              ],
-            ),
-            SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ButtonStyle(
-                  shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+            body: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: cubit.titleController,
+                    decoration: InputDecoration(
+                      labelText: 'Edit Title',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            BorderSide(color: Theme.of(context).primaryColor),
+                      ),
                     ),
                   ),
-                ),
-                child: Text(
-                  'Update Todo',
-                  style: TextStyle(fontSize: 18),
-                ),
-                onPressed: updateTodo,
+                  SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: cubit.descriptionController,
+                    decoration: InputDecoration(
+                      labelText: 'Edit Description',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            BorderSide(color: Theme.of(context).primaryColor),
+                      ),
+                    ),
+                    maxLines: 4,
+                  ),
+                  SizedBox(height: 16),
+
+                  DropdownButtonFormField<String>(
+                    value: cubit.selectedStatus,
+                    decoration: InputDecoration(
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: cubit.statuses.map((status) {
+                      return DropdownMenuItem(
+                        value: status,
+                        child: Text(status),
+                      );
+                    }).toList(),
+                    onChanged: (value) => cubit.changeStatus(value!),
+                  ),
+                  SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          cubit.startTime != null
+                              ? 'Start: ${cubit.startTime!.hour}:${cubit.startTime!.minute}'
+                              : 'Select Start Time',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          TimeOfDay? picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          );
+                          if (picked != null) {
+                            cubit.pickTime(isStartTime: true, picked: picked);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: Text("Pick Start"),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          cubit.endTime != null
+                              ? 'End: ${cubit.endTime!.hour}:${cubit.endTime!.minute}'
+                              : 'Select End Time',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          TimeOfDay? picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          );
+                          if (picked != null) {
+                            cubit.pickTime(isStartTime: false, picked: picked);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: Text("Pick End"),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 20),
+
+                  // Update Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () => cubit.updateTodo(
+                          docId: docId, uid: uid, isGroupTask: isGroupTask),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child:
+                          Text('Update Todo', style: TextStyle(fontSize: 16)),
+                    ),
+                  )
+                ],
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

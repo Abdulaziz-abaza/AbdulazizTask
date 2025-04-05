@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="Taskify"
+        android:label="Aziz Task"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
@@ -13,12 +13,10 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             
-            <!-- تحديد الثيم العادي عند بدء التطبيق -->
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"/>
             
-            <!-- إعداد قناة الإشعارات لـ Firebase -->
             <meta-data
               android:name="com.google.firebase.messaging.default_notification_channel_id"
               android:value="high_importance_channel"/>
@@ -28,6 +26,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+<service
+    android:name="com.google.firebase.messaging.FirebaseMessagingService"
+    android:permission="android.permission.BIND_JOB_SERVICE">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
 
         <meta-data
             android:name="flutterEmbedding"

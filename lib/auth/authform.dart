@@ -2,45 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:googleapis_auth/auth_io.dart' as auth;
-import 'dart:io';
+import 'package:lottie/lottie.dart';
+
+import 'package:mydo/core/notificationService.dart';
+import 'package:mydo/cubit/task_cubit.dart';
+import 'package:mydo/screens/home.dart';
 
 class AuthForm extends StatefulWidget {
   @override
   _AuthFormState createState() => _AuthFormState();
-}
-
-Future<void> sendWelcomeNotification(String token, String username) async {
-  final String serverKey = "34eb1d1107a84d5b0e7f9b05576c0d1ff04823cf";
-
-  final String fcmUrl = "https://fcm.googleapis.com/fcm/send";
-
-  final Map<String, dynamic> message = {
-    "to": token,
-    "notification": {
-      "title": "Welcome to Taskify!",
-      "body": "Hello $username, thank you for signing up!",
-    },
-  };
-
-  final response = await http.post(
-    Uri.parse(fcmUrl),
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "key=$serverKey",
-    },
-    body: jsonEncode(message),
-  );
-
-  if (response.statusCode == 200) {
-    print("✅ Welcome notification sent successfully!");
-  } else {
-    print("❌ Failed to send welcome notification: ${response.statusCode}");
-    print("🔴 Error: ${response.body}");
-  }
 }
 
 class _AuthFormState extends State<AuthForm> {
@@ -66,6 +41,10 @@ class _AuthFormState extends State<AuthForm> {
         submitForm(_email, _password, _username);
       }
     }
+    NotificationService.sendNotificationToAll(
+      "🎉 مرحبًا بك في التطبيق!",
+      "تم إنشاء حسابك بنجاح! نحن متحمسون لوجودك معنا.",
+    );
   }
 
   submitForm(String email, String password, String username) async {
@@ -74,9 +53,26 @@ class _AuthFormState extends State<AuthForm> {
       UserCredential authResult;
 
       if (isLoginPage) {
+        NotificationService.sendNotificationToAll(
+          "🎉 مرحبًا بك مره اخرى!",
+          "تابع إنجاز مهامك!",
+        );
         authResult = await auth.signInWithEmailAndPassword(
           email: email,
           password: password,
+        );
+        NotificationService.sendNotificationToAll(
+          "🎉 مرحبًا بك مره اخرى!",
+          "تابع إنجاز مهامك!",
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BlocProvider<TaskCubit>(
+              create: (_) => TaskCubit(),
+              child: Home(),
+            ),
+          ),
         );
       } else {
         try {
@@ -84,21 +80,33 @@ class _AuthFormState extends State<AuthForm> {
             email: email,
             password: password,
           );
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => Home()),
+            (route) => false,
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlocProvider<TaskCubit>(
+                create: (_) => TaskCubit(),
+                child: Home(),
+              ),
+            ),
+          );
 
           String? uid = authResult.user?.uid;
           String? token = await FirebaseMessaging.instance.getToken();
 
-          await FirebaseFirestore.instance.collection('users').doc(uid).set({
-            'username': username,
-            'email': email,
-            'fcmToken': token, // حفظ توكن الإشعارات في Firestore
-          });
-
-          // إرسال الإشعار الترحيبي
           if (token != null) {
-            await sendWelcomeNotification(token, username);
+            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+              'username': username,
+              'email': email,
+              'fcmToken': token,
+            });
           }
         } catch (e) {
+          print("  Error during user creation: $e");
           setState(() {
             _errorText = e.toString().split("]")[1].trim();
           });
@@ -107,44 +115,29 @@ class _AuthFormState extends State<AuthForm> {
         }
       }
     } on FirebaseAuthException catch (e) {
+      print("  Firebase Authentication Error: ${e.message}");
       setState(() {
         _errorText = 'Invalid Email or Password!';
       });
     } catch (e) {
-      print(e);
+      print(" Unexpected error: $e");
     } finally {
       isLoading = false;
     }
   }
 
-  Future<void> sendNotification(String token, String title, String body) async {
-    final String serverKey =
-        "34eb1d1107a84d5b0e7f9b05576c0d1ff04823cf"; // ضع هنا مفتاح الخادم
-    final String fcmUrl = "https://fcm.googleapis.com/fcm/send";
+  Future<String> getAccessToken() async {
+    final jsonString = await rootBundle.loadString(
+        'assets/chatmodule-ac96c-firebase-adminsdk-92f4m-34eb1d1107.json');
+    final jsonData = jsonDecode(jsonString);
 
-    final Map<String, dynamic> message = {
-      "to": token,
-      "notification": {
-        "title": title,
-        "body": body,
-      },
-    };
-
-    final response = await http.post(
-      Uri.parse(fcmUrl),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "key=$serverKey",
-      },
-      body: jsonEncode(message),
+    final credentials = auth.ServiceAccountCredentials.fromJson(jsonData);
+    final client = await auth.clientViaServiceAccount(
+      credentials,
+      ['https://www.googleapis.com/auth/firebase.messaging'],
     );
 
-    if (response.statusCode == 200) {
-      print("✅ تم إرسال الإشعار بنجاح!");
-    } else {
-      print("❌ فشل إرسال الإشعار: ${response.statusCode}");
-      print("🔴 الخطأ: ${response.body}");
-    }
+    return client.credentials.accessToken.data;
   }
 
   @override
@@ -158,8 +151,18 @@ class _AuthFormState extends State<AuthForm> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset('assets/todo.png', height: 160),
-                SizedBox(height: 20),
+                // Text(
+                //     isLoginPage
+                //         ? 'Login to continue managing your tasks '
+                //         : 'Please create an account first to be able to create tasks',
+                //     style: GoogleFonts.poppins(
+                //       color: Colors.white,
+                //       fontSize: 20,
+                //       fontWeight: FontWeight.bold,
+                //     )),
+                Lottie.asset("assets/regtodo.json"),
+                // Image.asset('assets/todo.png', height: 160),
+
                 Form(
                   key: _formKey,
                   child: Column(

@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:mydo/core/constants/constants.dart';
 
 class Description extends StatelessWidget {
   final String title, description, createdBy, status;
@@ -20,16 +22,22 @@ class Description extends StatelessWidget {
   }) : super(key: key);
 
   Future<String> getUserName(String userId) async {
+    print('User ID Created Byyyyyyy: $createdBy');
+    print('User ID: $userId');
+    print('User ID Fetching user name for ID: $userId');
+    print('User ID Fetching user name for ID: $createdBy');
     try {
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection(
-              'users') // تأكد من أن 'users' هو اسم مجموعة المستخدمين في Firestore
+          // .collection(
+          //     'users')
+          // .doc(userId)
+          // .get();
+          .collection('users')
           .doc(userId)
           .get();
 
       if (userDoc.exists) {
-        return userDoc[
-            'name']; // تأكد أن 'name' هو الحقل الذي يحتوي على اسم المستخدم
+        return userDoc['username'];
       } else {
         return 'Unknown User';
       }
@@ -48,7 +56,7 @@ class Description extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('Task Details', style: GoogleFonts.roboto()),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppColors.primary,
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -63,6 +71,7 @@ class Description extends StatelessWidget {
               children: [
                 _buildDetailItem(Icons.title, 'Title', title),
                 _buildDetailItem(Icons.description, 'Description', description),
+
                 FutureBuilder<String>(
                   future: getUserName(createdBy),
                   builder: (context, snapshot) {
